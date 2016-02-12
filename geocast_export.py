@@ -197,11 +197,12 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
         viewslicestr = 'ViewSlice FODAngle %.02f Size %.02f\n' % (145, 1000)
         #print (viewslicestr)
         FILE.write(viewslicestr)
+        # World matrix is column-major stored
         cam_modelmat_str = 'ModelviewMatrix\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n' %  \
-            (cm[0][0], cm[0][1], cm[0][2], cm[0][3], \
-             cm[1][0], cm[1][1], cm[1][2], cm[1][3], \
-             cm[2][0], cm[2][1], cm[2][2], cm[2][3], \
-             cm[3][0], cm[3][1], cm[3][2], cm[3][3])
+            (cm[0][0], cm[1][0], cm[2][0], cm[3][0], \
+             cm[0][1], cm[1][1], cm[2][1], cm[3][1], \
+             cm[0][2], cm[1][2], cm[2][2], cm[3][2], \
+             cm[0][3], cm[1][3], cm[2][3], cm[3][3])
         FILE.write(cam_modelmat_str)
         #print (cam_modelmat_str)
         clipstart = context.scene.camera.data.clip_start
