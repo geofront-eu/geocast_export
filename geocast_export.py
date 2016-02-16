@@ -214,7 +214,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
             FILE.write(dataprojstr)
         else: # Perspective
             lens = context.scene.camera.data.lens            
-            dataprojstr = 'DataProject BlenderPerspective Aspect %.02f Lens %.04f ClipRange %.02f %.02f\n' % (1.0, lens, clipstart, clipend)
+            dataprojstr = 'DataProject Perspective Aspect %.02f Lens %.04f ClipRange %.02f %.02f\n' % (1.0, lens, clipstart, clipend)
             #print (dataprojstr)
             FILE.write(dataprojstr)
         rangestr = 'ZDataRange 0.0 1.0\n'
