@@ -194,10 +194,10 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
             #print ("Camera Location is", cm)
             loc = context.scene.camera.location.to_tuple()
             #print ("Camera Position is", loc)
-            geocastFilename = context.scene.render.filepath + str(frameNr).zfill(4) + ".geocast"
+            geocastFilename = context.scene.render.filepath + str(frameNr).zfill(5) + ".geocast"
             FILE = open(geocastFilename, "w")
-            FILE.write('# Made with GeoCast Exporter Blender Addon V%d.%d.%d\n' % (version[0], version[1], version[2]))
             FILE.write('GeoCast V1.0\n')
+            FILE.write('# Made with GeoCast Exporter Blender Addon V%d.%d.%d\n' % (version[0], version[1], version[2]))
             if context.scene.camera.animation_data is None:
               FILE.write("StaticCamera\n")
             else:
