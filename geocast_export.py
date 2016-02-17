@@ -133,108 +133,119 @@ def updateProgressBar(task_title, percentage): # e.g. ("saving", 34 / 100)
 
 # Exporting routine
 def exportToGeoCastFile(self, context, output_path, export_size, export_frame_range):
+    import os
 
     print ("@@@@@@@@@@ START EXPORTING ROUTINE @@@@@@@@@@@@@@\n")
 
     print ('\n')
     print ('|| GeoCast exporter script V1.01 ||\n')
     print ('|| February 2016, Marco Alesiani ||\n')
+    version = bl_info["version"]
 
     # Debug info to be displayed in the terminal    
     print ('Width and height is: ', export_size)
 
     # Set output path
     print ('Output path is: ', output_path)
+
+    # Cycle through all selected objects (i.e. through all selected cameras)
+    for camera_object in context.selected_objects:        
     
-    # Get camera name from the selected object
-    if context.active_object.type != 'CAMERA':
-        raise Exception("[ERROR] - Active object is not a camera")
-    print ("Found camera with name " + context.active_object.name);
+        # Check if this camera_object is actually a camera
+        if camera_object.type != 'CAMERA':
+            raise Exception("[ERROR] - Object with name '" + camera_object.name + "' is not a camera")
+        print ("Found camera with name " + camera_object.name);
 
-    context.scene.render.filepath = output_path + context.active_object.name + '_';
+        # Create subdirectory "CameraName/" where to store OpenEXR and GeoCast files
+        output_camera_path = output_path + camera_object.name
+        if not os.path.exists(output_camera_path):
+            os.makedirs(output_camera_path)
 
-    for frameNr in range(export_frame_range[0], export_frame_range[1]):
+        context.scene.render.filepath = output_camera_path + os.sep;
 
-        updateProgressBar("Exporting GeoCast data", frameNr / export_frame_range[1])
+        for frameNr in range(export_frame_range[0], export_frame_range[1]):
 
-        # Save OpenEXR with depth data
-        context.scene.camera = context.active_object
-        context.scene.frame_start = frameNr
-        context.scene.frame_end = frameNr
-        context.scene.frame_step = 1    
-        context.scene.render.pixel_aspect_x = 1
-        context.scene.render.pixel_aspect_y = 1
-        context.scene.render.use_file_extension = True
-        context.scene.render.image_settings.color_mode ='RGB'
-        context.scene.render.image_settings.file_format = 'OPEN_EXR'
-        context.scene.render.image_settings.exr_codec = 'ZIP'
-        # context.scene.render.image_settings.color_depth = '16' # Half float
-        context.scene.render.image_settings.use_zbuffer = True
-        context.scene.render.resolution_x = int(export_size)
-        context.scene.render.resolution_y = int(export_size)
-        bpy.ops.render.render(animation=True) # Render
+            updateProgressBar("Exporting GeoCast data", frameNr / export_frame_range[1])
 
-        # Update the scene before gathering camera data
-        context.scene.frame_current = frameNr
-        context.scene.update()
+            # Save OpenEXR with depth data (color channels are only used for debugging purposes)
+            context.scene.camera = camera_object
+            context.scene.frame_start = frameNr
+            context.scene.frame_end = frameNr
+            context.scene.frame_step = 1
+            context.scene.render.pixel_aspect_x = 1
+            context.scene.render.pixel_aspect_y = 1
+            context.scene.render.use_file_extension = True
+            context.scene.render.image_settings.color_mode ='RGB' # Alpha might not be present, pick RGB
+            context.scene.render.image_settings.file_format = 'OPEN_EXR'
+            context.scene.render.image_settings.exr_codec = 'ZIP'
+            # context.scene.render.image_settings.color_depth = '16' # Half float
+            context.scene.render.image_settings.use_zbuffer = True
+            context.scene.render.resolution_x = int(export_size)
+            context.scene.render.resolution_y = int(export_size)
+            context.scene.render.use_raytrace = False # Speeds things up considerably
+            bpy.ops.render.render(animation=True) # Render
 
-        # Write the geocast file corresponding to this frame
-        cm = context.scene.camera.matrix_world
-        #print ("Camera Location is", cm)
-        loc = context.scene.camera.location.to_tuple()
-        #print ("Camera Position is", loc)
-        geocastFilename = context.scene.render.filepath + str(frameNr).zfill(4) + ".geocast"
-        FILE = open(geocastFilename, "w")
-        FILE.write('GeoCast V1.0\n')
-        if context.scene.camera.animation_data is None:
-          FILE.write("StaticCamera\n")
-        else:
-          FILE.write("DynamicCamera\n")
-        locstr = 'Pos %.02f %.02f %.02f\n' % loc
-        #print (locstr)
-        FILE.write(locstr)
-        viewslicestr = 'ViewSlice FODAngle %.02f Size %.02f\n' % (145, 1000)
-        #print (viewslicestr)
-        FILE.write(viewslicestr)
-        # World matrix is column-major stored
-        cam_modelmat_str = 'ModelviewMatrix\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n' %  \
-            (cm[0][0], cm[1][0], cm[2][0], cm[3][0], \
-             cm[0][1], cm[1][1], cm[2][1], cm[3][1], \
-             cm[0][2], cm[1][2], cm[2][2], cm[3][2], \
-             cm[0][3], cm[1][3], cm[2][3], cm[3][3])
-        FILE.write(cam_modelmat_str)
-        #print (cam_modelmat_str)
-        clipstart = context.scene.camera.data.clip_start
-        clipend = context.scene.camera.data.clip_end
-        print("Camera type is " + context.scene.camera.data.type + "\n")
-        if context.scene.camera.data.type == 'ORTHO': # Orthogonal
-            scale = context.scene.camera.data.ortho_scale
-            dataprojstr = 'DataProject Ortho WindowSize %.02f %.02f ProjRange %.02f %.02f\n' % (scale, scale, clipstart, clipend)
-            #print (dataprojstr)
-            FILE.write(dataprojstr)
-        else: # Perspective
-            # lens = context.scene.camera.data.lens            
-            # Obsolete: dataprojstr = 'DataProject BlenderPerspective Aspect %.02f Lens %.04f ClipRange %.02f %.02f\n' % (1.0, lens, clipstart, clipend)
-            fovy = context.scene.camera.data.angle_y            
-            fovx = context.scene.camera.data.angle_x            
-            fov = context.scene.camera.data.angle            
-            pi = 3.14159265358979323846
-            fovy_deg = fovy/pi*180
-            fovx_deg = fovx/pi*180
-            dataprojstr = 'DataProject Perspective Fovy %f Aspect %f ClipRange %.05f %.05f\n' % (fovy_deg, fovx/fovy, clipstart, clipend)
-            #print (dataprojstr)
-            FILE.write(dataprojstr)
-            FILE.write("WorldSpaceDepth\n")
-            fovstr = 'FoV %.03f  FoVx %.03f  Fovx_deg %f Fovy %.03f Fovy_deg %f\n' % (fov, fovx, fovx_deg, fovy, fovy_deg)
-            print(fovstr)
-        rangestr = 'ZDataRange 0.0 1.0\n'
-        #print (rangestr)
-        FILE.write(rangestr)
-        FILE.close()
-        print ("Saved: ", geocastFilename)
+            # Update the scene before gathering camera data
+            context.scene.frame_current = frameNr
+            context.scene.update()
 
-    print ("@@@@@@@@@@ END EXPORTING ROUTINE @@@@@@@@@@@@@@\n")
-    version = bl_info["version"]
+            # Write the geocast file corresponding to this frame
+            cm = context.scene.camera.matrix_world
+            #print ("Camera Location is", cm)
+            loc = context.scene.camera.location.to_tuple()
+            #print ("Camera Position is", loc)
+            geocastFilename = context.scene.render.filepath + str(frameNr).zfill(4) + ".geocast"
+            FILE = open(geocastFilename, "w")
+            FILE.write('# Made with GeoCast Exporter Blender Addon V%d.%d.%d\n' % (version[0], version[1], version[2]))
+            FILE.write('GeoCast V1.0\n')
+            if context.scene.camera.animation_data is None:
+              FILE.write("StaticCamera\n")
+            else:
+              FILE.write("DynamicCamera\n")
+            locstr = 'Pos %.02f %.02f %.02f\n' % loc
+            #print (locstr)
+            FILE.write(locstr)
+            viewslicestr = 'ViewSlice FODAngle %.02f Size %.02f\n' % (145, 1000)
+            #print (viewslicestr)
+            FILE.write(viewslicestr)
+            # World matrix is column-major stored
+            cam_modelmat_str = 'ModelviewMatrix\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n' %  \
+                (cm[0][0], cm[1][0], cm[2][0], cm[3][0], \
+                 cm[0][1], cm[1][1], cm[2][1], cm[3][1], \
+                 cm[0][2], cm[1][2], cm[2][2], cm[3][2], \
+                 cm[0][3], cm[1][3], cm[2][3], cm[3][3])
+            FILE.write(cam_modelmat_str)
+            #print (cam_modelmat_str)
+            clipstart = context.scene.camera.data.clip_start
+            clipend = context.scene.camera.data.clip_end
+            print("Camera type is " + context.scene.camera.data.type + "\n")
+            if context.scene.camera.data.type == 'ORTHO': # Orthogonal
+                scale = context.scene.camera.data.ortho_scale
+                dataprojstr = 'DataProject Ortho WindowSize %.02f %.02f ProjRange %.02f %.02f\n' % (scale, scale, clipstart, clipend)
+                #print (dataprojstr)
+                FILE.write(dataprojstr)
+            else: # Perspective
+                # lens = context.scene.camera.data.lens            
+                # Obsolete: dataprojstr = 'DataProject BlenderPerspective Aspect %.02f Lens %.04f ClipRange %.02f %.02f\n' % (1.0, lens, clipstart, clipend)
+                fovy = context.scene.camera.data.angle_y            
+                fovx = context.scene.camera.data.angle_x            
+                fov = context.scene.camera.data.angle            
+                pi = 3.14159265358979323846
+                fovy_deg = fovy/pi*180
+                fovx_deg = fovx/pi*180
+                dataprojstr = 'DataProject Perspective Fovy %f Aspect %f ClipRange %.05f %.05f\n' % (fovy_deg, fovx/fovy, clipstart, clipend)
+                #print (dataprojstr)
+                FILE.write(dataprojstr)
+                FILE.write("WorldSpaceDepth\n")
+                fovstr = 'FoV %.03f  FoVx %.03f  Fovx_deg %f Fovy %.03f Fovy_deg %f\n' % (fov, fovx, fovx_deg, fovy, fovy_deg)
+                print(fovstr)
+            rangestr = 'ZDataRange 0.0 1.0\n'
+            #print (rangestr)
+            FILE.write(rangestr)
+            FILE.close()
+            print ("Saved: ", geocastFilename)
+
+    print ("@@@@@@@@@@ END EXPORTING ROUTINE @@@@@@@@@@@@@@\n")    
     print("This was geocast exporter plugin V%d.%d.%d" % (version[0], version[1], version[2]))
     
     return {'FINISHED'}
