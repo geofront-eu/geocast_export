@@ -23,7 +23,7 @@
 # (C) 2016 Gernot Ziegler, - released under Blender Artistic License - www.blender.org
 # (C) 2016 Marco Alesiani, - released under Blender Artistic License - www.blender.org
 # Date: February 9th, 2016
-# Ver: 1.0
+# Ver: 1.1
 #-----------------------------------------------------------------
 
 # U S A G E    D E T A I L S
@@ -37,7 +37,7 @@
 bl_info = {
     "name": "GeoCast Exporter",
     "author": "Gernot Ziegler, Marco Alesiani",
-    "version": (1, 0, 0),
+    "version": (1, 0, 1),
     "blender": (2, 76, 0),
     "location": "File > Export > GeoCast Thingy",
     "description": "Exports depth data and camera .geocast files",
@@ -137,7 +137,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
     print ("@@@@@@@@@@ START EXPORTING ROUTINE @@@@@@@@@@@@@@\n")
 
     print ('\n')
-    print ('|| GeoCast exporter script V1.00 ||\n')
+    print ('|| GeoCast exporter script V1.01 ||\n')
     print ('|| February 2016, Marco Alesiani ||\n')
 
     # Debug info to be displayed in the terminal    
@@ -185,7 +185,6 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
         #print ("Camera Position is", loc)
         geocastFilename = context.scene.render.filepath + str(frameNr).zfill(4) + ".geocast"
         FILE = open(geocastFilename, "w")
-        #print ("Saving camera data to", geocastFilename)
         FILE.write('GeoCast V1.0\n')
         if context.scene.camera.animation_data is None:
           FILE.write("StaticCamera\n")
@@ -207,23 +206,37 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
         #print (cam_modelmat_str)
         clipstart = context.scene.camera.data.clip_start
         clipend = context.scene.camera.data.clip_end
+        print("Camera type is " + context.scene.camera.data.type + "\n")
         if context.scene.camera.data.type == 'ORTHO': # Orthogonal
             scale = context.scene.camera.data.ortho_scale
             dataprojstr = 'DataProject Ortho WindowSize %.02f %.02f ProjRange %.02f %.02f\n' % (scale, scale, clipstart, clipend)
             #print (dataprojstr)
             FILE.write(dataprojstr)
         else: # Perspective
-            lens = context.scene.camera.data.lens            
-            dataprojstr = 'DataProject BlenderPerspective Aspect %.02f Lens %.04f ClipRange %.02f %.02f\n' % (1.0, lens, clipstart, clipend)
+            # lens = context.scene.camera.data.lens            
+            # Obsolete: dataprojstr = 'DataProject BlenderPerspective Aspect %.02f Lens %.04f ClipRange %.02f %.02f\n' % (1.0, lens, clipstart, clipend)
+            fovy = context.scene.camera.data.angle_y            
+            fovx = context.scene.camera.data.angle_x            
+            fov = context.scene.camera.data.angle            
+            pi = 3.14159265358979323846
+            fovy_deg = fovy/pi*180
+            fovx_deg = fovx/pi*180
+            dataprojstr = 'DataProject Perspective Fovy %f Aspect %f ClipRange %.05f %.05f\n' % (fovy_deg, fovx/fovy, clipstart, clipend)
             #print (dataprojstr)
             FILE.write(dataprojstr)
+            FILE.write("WorldSpaceDepth\n")
+            fovstr = 'FoV %.03f  FoVx %.03f  Fovx_deg %f Fovy %.03f Fovy_deg %f\n' % (fov, fovx, fovx_deg, fovy, fovy_deg)
+            print(fovstr)
         rangestr = 'ZDataRange 0.0 1.0\n'
         #print (rangestr)
         FILE.write(rangestr)
         FILE.close()
+        print ("Saved: ", geocastFilename)
 
     print ("@@@@@@@@@@ END EXPORTING ROUTINE @@@@@@@@@@@@@@\n")
-
+    version = bl_info["version"]
+    print("This was geocast exporter plugin V%d.%d.%d" % (version[0], version[1], version[2]))
+    
     return {'FINISHED'}
 
 
