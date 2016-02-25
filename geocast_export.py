@@ -37,7 +37,7 @@
 bl_info = {
     "name": "GeoCast Exporter",
     "author": "Gernot Ziegler, Marco Alesiani",
-    "version": (1, 0, 1),
+    "version": (1, 0, 2),
     "blender": (2, 76, 0),
     "location": "File > Export > GeoCast Thingy",
     "description": "Exports depth data and camera .geocast files",
@@ -82,7 +82,7 @@ class ExportGeoCast(bpy.types.Operator, ExportHelper):
             description="Start frame for exporting",
             default=1, min=1, max=300000)
     frame_end = IntProperty(name="End Frame",
-            description="End frame for exporting",
+            description="End frame for exporting (not included in the export data)",
             default=40, min=1, max=300000)
 
     @classmethod
@@ -138,7 +138,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
     print ("@@@@@@@@@@ START EXPORTING ROUTINE @@@@@@@@@@@@@@\n")
 
     print ('\n')
-    print ('|| GeoCast exporter script V1.01 ||\n')
+    print ('|| GeoCast exporter script V1.02 ||\n')
     print ('|| February 2016, Marco Alesiani ||\n')
     version = bl_info["version"]
 
@@ -172,6 +172,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
             context.scene.frame_start = frameNr
             context.scene.frame_end = frameNr
             context.scene.frame_step = 1
+            context.scene.frame_current = frameNr
             context.scene.render.pixel_aspect_x = 1
             context.scene.render.pixel_aspect_y = 1
             context.scene.render.use_file_extension = True
@@ -183,22 +184,34 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
             context.scene.render.resolution_x = int(export_size)
             context.scene.render.resolution_y = int(export_size)
             context.scene.render.use_raytrace = False # Speeds things up considerably
-            bpy.ops.render.render(animation=True) # Render
 
-            # Update the scene before gathering camera data
-            context.scene.frame_current = frameNr
+            # Handles markers in a timeline animation (i.e. if there's a marker, set our current camera
+            # as the rendering one - restore afterwards)
+            markersForThisFrame = [x for x in context.scene.timeline_markers if x.frame == frameNr]
+            previousCameras = []
+            if len(markersForThisFrame) > 0:
+                for marker in markersForThisFrame:
+                    previousCameras.append(marker.camera)
+                    marker.camera = camera_object
+            else:
+                context.scene.timeline_markers.new('GEOCASTMARKER', frameNr)
+                context.scene.timeline_markers['GEOCASTMARKER'].camera = camera_object
+
+            # Update the scene before rendering or gathering camera data            
             context.scene.update()
 
+            bpy.ops.render.render(animation=True) # Render            
+
             # Write the geocast file corresponding to this frame
-            cm = context.scene.camera.matrix_world
+            cm = camera_object.matrix_world
             #print ("Camera Location is", cm)
-            loc = context.scene.camera.location.to_tuple()
+            loc = camera_object.location.to_tuple()
             #print ("Camera Position is", loc)
             geocastFilename = context.scene.render.filepath + str(frameNr).zfill(5) + ".geocast"
             FILE = open(geocastFilename, "w")
             FILE.write('GeoCast V1.0\n')
             FILE.write('# Made with GeoCast Exporter Blender Addon V%d.%d.%d\n' % (version[0], version[1], version[2]))
-            if context.scene.camera.animation_data is None:
+            if camera_object.animation_data is None:
               FILE.write("StaticCamera\n")
             else:
               FILE.write("DynamicCamera\n")
@@ -216,20 +229,20 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
                  cm[0][3], cm[1][3], cm[2][3], cm[3][3])
             FILE.write(cam_modelmat_str)
             #print (cam_modelmat_str)
-            clipstart = context.scene.camera.data.clip_start
-            clipend = context.scene.camera.data.clip_end
-            print("Camera type is " + context.scene.camera.data.type + "\n")
-            if context.scene.camera.data.type == 'ORTHO': # Orthogonal
-                scale = context.scene.camera.data.ortho_scale
+            clipstart = camera_object.data.clip_start
+            clipend = camera_object.data.clip_end
+            print("Camera type is " + camera_object.data.type + "\n")
+            if camera_object.data.type == 'ORTHO': # Orthogonal
+                scale = camera_object.data.ortho_scale
                 dataprojstr = 'DataProject Ortho WindowSize %.02f %.02f ProjRange %.02f %.02f\n' % (scale, scale, clipstart, clipend)
                 #print (dataprojstr)
                 FILE.write(dataprojstr)
             else: # Perspective
-                # lens = context.scene.camera.data.lens            
+                # lens = camera_object.data.lens            
                 # Obsolete: dataprojstr = 'DataProject BlenderPerspective Aspect %.02f Lens %.04f ClipRange %.02f %.02f\n' % (1.0, lens, clipstart, clipend)
-                fovy = context.scene.camera.data.angle_y            
-                fovx = context.scene.camera.data.angle_x            
-                fov = context.scene.camera.data.angle            
+                fovy = camera_object.data.angle_y            
+                fovx = camera_object.data.angle_x            
+                fov = camera_object.data.angle            
                 pi = 3.14159265358979323846
                 fovy_deg = fovy/pi*180
                 fovx_deg = fovx/pi*180
@@ -244,6 +257,13 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
             FILE.write(rangestr)
             FILE.close()
             print ("Saved: ", geocastFilename)
+
+            # Restore markers, if any
+            if len(markersForThisFrame) > 0:
+                for idx, val in enumerate(previousCameras):
+                    markersForThisFrame[idx].camera = val
+            else:
+                context.scene.timeline_markers.remove(context.scene.timeline_markers['GEOCASTMARKER'])
 
     print ("@@@@@@@@@@ END EXPORTING ROUTINE @@@@@@@@@@@@@@\n")    
     print("This was geocast exporter plugin V%d.%d.%d" % (version[0], version[1], version[2]))
