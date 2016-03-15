@@ -49,7 +49,7 @@ bl_info = {
 
 import bpy
 from bpy.types import Operator
-from bpy.props import (StringProperty, IntProperty, EnumProperty)
+from bpy.props import (StringProperty, IntProperty, BoolProperty, EnumProperty)
 from bpy_extras.io_utils import (ExportHelper)
 
 # The main exporter class which creates the 'GeoCast Exporter' panel in the export window
@@ -85,6 +85,15 @@ class ExportGeoCast(bpy.types.Operator, ExportHelper):
             description="End frame for exporting (not included in the export data)",
             default=40, min=1, max=300000)
 
+    export_colormap = BoolProperty(
+            description="Export a color map together with the geocast file",
+            name="Export color map",
+            default = False)
+    export_depthmap = BoolProperty(
+            description="Export a depth map together with the geocast file",
+            name="Export depth map",
+            default = False)
+
     @classmethod
     def poll(cls, context):
         return context.active_object != None
@@ -118,6 +127,8 @@ class ExportGeoCast(bpy.types.Operator, ExportHelper):
         layout.prop(self, "frame_end")
         layout.prop(self, "export_size", expand=True)        
         layout.separator()
+        layout.prop(self, "export_colormap")
+        layout.prop(self, "export_depthmap")
 
 # A simple progressbar in the console inspired by unix terminals
 def updateProgressBar(task_title, percentage): # e.g. ("saving", 34 / 100)
@@ -163,6 +174,75 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
 
         context.scene.render.filepath = output_camera_path + os.sep;
 
+        # Set up nodes to export the colormap and/or depthmap if asked to do so
+        nodes_to_cleanup = []
+        old_use_nodes = context.scene.use_nodes
+        context.scene.use_nodes = True
+        nodes = context.scene.node_tree.nodes
+        render_layers = nodes['Render Layers']        
+        if self.export_colormap == True:
+
+            set_alpha = nodes.new("CompositorNodeSetAlpha")
+            nodes_to_cleanup.append(set_alpha)
+
+            color_file_output = nodes.new("CompositorNodeOutputFile")
+            nodes_to_cleanup.append(color_file_output)
+            color_file_output.base_path = context.scene.render.filepath + "colormap"
+            color_file_output.format.file_format = 'PNG'
+            color_file_output.format.color_mode = 'RGBA'
+            color_file_output.format.color_depth = '8' # Needed by geofront webgl viewers
+            color_file_output.file_slots[0].path = '' # No prefix to filenames
+
+            # Connections
+            context.scene.node_tree.links.new(
+                render_layers.outputs['Image'],
+                set_alpha.inputs['Image']
+            )
+            context.scene.node_tree.links.new(
+                render_layers.outputs['Alpha'],
+                set_alpha.inputs['Alpha']
+            )
+            context.scene.node_tree.links.new(
+                set_alpha.outputs['Image'],
+                color_file_output.inputs['Image']
+            )
+
+        if self.export_depthmap == True:
+
+            map_range = nodes.new("CompositorNodeMapRange")
+            nodes_to_cleanup.append(map_range)
+            map_range.inputs[1].default_value = 0
+            map_range.inputs[2].default_value = camera_object.data.clip_end
+            map_range.inputs[3].default_value = 0
+            map_range.inputs[4].default_value = 1
+
+            color_ramp = nodes.new("CompositorNodeValToRGB")
+            nodes_to_cleanup.append(color_ramp)
+            color_ramp.color_ramp.color_mode = 'RGB'
+            color_ramp.color_ramp.interpolation = 'LINEAR'
+
+            depth_file_output = nodes.new("CompositorNodeOutputFile")
+            nodes_to_cleanup.append(depth_file_output)
+            depth_file_output.base_path = context.scene.render.filepath + "depthmap"
+            depth_file_output.format.file_format = 'PNG'
+            depth_file_output.format.color_mode = 'BW'
+            depth_file_output.format.color_depth = '8' # Needed by geofront webgl viewers
+            depth_file_output.file_slots[0].path = '' # No prefix to filenames
+
+            # Connections
+            context.scene.node_tree.links.new(
+                render_layers.outputs['Z'],
+                map_range.inputs['Value']
+            )
+            context.scene.node_tree.links.new(
+                map_range.outputs['Value'],
+                color_ramp.inputs['Fac']
+            )
+            context.scene.node_tree.links.new(
+                color_ramp.outputs['Image'],
+                depth_file_output.inputs['Image']
+            )
+
         for frameNr in range(export_frame_range[0], export_frame_range[1]):
 
             updateProgressBar("Exporting GeoCast data", frameNr / export_frame_range[1])
@@ -207,7 +287,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
             #print ("Camera Location is", cm)
             loc = camera_object.location.to_tuple()
             #print ("Camera Position is", loc)
-            geocastFilename = context.scene.render.filepath + str(frameNr).zfill(5) + ".geocast"
+            geocastFilename = context.scene.render.filepath + str(frameNr).zfill(4) + ".geocast"
             FILE = open(geocastFilename, "w")
             FILE.write('GeoCast V1.0\n')
             FILE.write('# Made with GeoCast Exporter Blender Addon V%d.%d.%d\n' % (version[0], version[1], version[2]))
@@ -264,6 +344,11 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
                     markersForThisFrame[idx].camera = val
             else:
                 context.scene.timeline_markers.remove(context.scene.timeline_markers['GEOCASTMARKER'])
+
+        for node in nodes_to_cleanup: # Cleanup nodes from the original graph
+            nodes.remove(node)
+
+        context.scene.use_nodes = old_use_nodes
 
     print ("@@@@@@@@@@ END EXPORTING ROUTINE @@@@@@@@@@@@@@\n")    
     print("This was geocast exporter plugin V%d.%d.%d" % (version[0], version[1], version[2]))
