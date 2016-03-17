@@ -177,6 +177,8 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
         # Set up nodes to export the colormap and/or depthmap if asked to do so
         nodes_to_cleanup = []
         old_use_nodes = context.scene.use_nodes
+        old_use_compositing = context.scene.render.use_compositing
+        context.scene.render.use_compositing = True
         context.scene.use_nodes = True
         nodes = context.scene.node_tree.nodes
         render_layers = nodes['Render Layers']        
@@ -348,6 +350,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
         for node in nodes_to_cleanup: # Cleanup nodes from the original graph
             nodes.remove(node)
 
+        context.scene.render.use_compositing = old_use_compositing
         context.scene.use_nodes = old_use_nodes
 
     print ("@@@@@@@@@@ END EXPORTING ROUTINE @@@@@@@@@@@@@@\n")    
