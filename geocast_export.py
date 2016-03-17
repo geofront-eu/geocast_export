@@ -149,7 +149,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
     print ("@@@@@@@@@@ START EXPORTING ROUTINE @@@@@@@@@@@@@@\n")
 
     print ('\n')
-    print ('|| GeoCast exporter script V1.02 ||\n')
+    print ('|| GeoCast exporter script V1.03 ||\n')
     print ('|| February 2016, Marco Alesiani ||\n')
     version = bl_info["version"]
 
@@ -160,7 +160,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
     print ('Output path is: ', output_path)
 
     # Cycle through all selected objects (i.e. through all selected cameras)
-    for camera_object in context.selected_objects:        
+    for camera_object in context.selected_objects:
     
         # Check if this camera_object is actually a camera
         if camera_object.type != 'CAMERA':
@@ -174,14 +174,25 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
 
         context.scene.render.filepath = output_camera_path + os.sep;
 
-        # Set up nodes to export the colormap and/or depthmap if asked to do so
+        # Set up nodes to export the colormap and/or depthmap if asked to do so, plus a bunch of other safety options
         nodes_to_cleanup = []
         old_use_nodes = context.scene.use_nodes
         old_use_compositing = context.scene.render.use_compositing
+        old_sequencer_colorspace_settings_name = context.scene.sequencer_colorspace_settings.name
+        old_camera_sensor_height = camera_object.data.sensor_height
+        old_resolution_percentage = context.scene.render.resolution_percentage
+
+        if camera_object.data.sensor_height != camera_object.data.sensor_width:
+            print ("[WARNING] - Camera '" + camera_object.name + "'' has sensor width different than sensor height. " +
+                   "Different sensor dimensions aren't supported. Overriding sensor height to match sensor width.")
+            camera_object.data.sensor_height = camera_object.data.sensor_width
+
         context.scene.render.use_compositing = True
         context.scene.use_nodes = True
+        context.scene.sequencer_colorspace_settings.name = "Raw"
+        context.scene.render.resolution_percentage = 100
         nodes = context.scene.node_tree.nodes
-        render_layers = nodes['Render Layers']        
+        render_layers = nodes['Render Layers']
         if self.export_colormap == True:
 
             set_alpha = nodes.new("CompositorNodeSetAlpha")
@@ -313,7 +324,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
             #print (cam_modelmat_str)
             clipstart = camera_object.data.clip_start
             clipend = camera_object.data.clip_end
-            print("Camera type is " + camera_object.data.type + "\n")
+            # print("Camera type is " + camera_object.data.type + "\n")
             if camera_object.data.type == 'ORTHO': # Orthogonal
                 scale = camera_object.data.ortho_scale
                 dataprojstr = 'DataProject Ortho WindowSize %.02f %.02f ProjRange %.02f %.02f\n' % (scale, scale, clipstart, clipend)
@@ -333,7 +344,7 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
                 FILE.write(dataprojstr)
                 FILE.write("WorldSpaceDepth\n")
                 fovstr = 'FoV %.03f  FoVx %.03f  Fovx_deg %f Fovy %.03f Fovy_deg %f\n' % (fov, fovx, fovx_deg, fovy, fovy_deg)
-                print(fovstr)
+                # print(fovstr)
             rangestr = 'ZDataRange 0.0 1.0\n'
             #print (rangestr)
             FILE.write(rangestr)
@@ -352,6 +363,9 @@ def exportToGeoCastFile(self, context, output_path, export_size, export_frame_ra
 
         context.scene.render.use_compositing = old_use_compositing
         context.scene.use_nodes = old_use_nodes
+        context.scene.sequencer_colorspace_settings.name = old_sequencer_colorspace_settings_name
+        context.scene.render.resolution_percentage = old_resolution_percentage
+        camera_object.data.sensor_height = old_camera_sensor_height
 
     print ("@@@@@@@@@@ END EXPORTING ROUTINE @@@@@@@@@@@@@@\n")    
     print("This was geocast exporter plugin V%d.%d.%d" % (version[0], version[1], version[2]))
